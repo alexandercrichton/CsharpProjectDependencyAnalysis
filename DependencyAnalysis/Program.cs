@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using System.Xml.XPath;
 
@@ -14,16 +15,17 @@ namespace DependencyAnalysis
             var (valid, directory) = DirectoryFromArguments(args);
             if (valid)
             {
-                var projects = FindProjectsInDirectory(directory);
+                var solutions = FindSolutionsInDirectory(directory);
 
-                OutputProjects(directory, projects);
+                OutputProjects(directory, solutions);
             }
             else
             {
                 ShowHelp();
             }
 
-            Console.ReadKey();
+            Console.WriteLine("Done");
+            Task.Delay(1000).Wait();
         }
 
         private static (bool valid, string directory) DirectoryFromArguments(IReadOnlyCollection<string> args) =>
@@ -31,80 +33,103 @@ namespace DependencyAnalysis
                 ? (true, args.First())
                 : (false, null);
 
-        private static IReadOnlyCollection<Project> FindProjectsInDirectory(string directory)
+        private static IReadOnlyCollection<Solution> FindSolutionsInDirectory(string directory)
         {
-            var projectFiles = new DirectoryInfo(directory).GetFiles("*.csproj", SearchOption.AllDirectories);
+            var solutionFiles = new DirectoryInfo(directory).GetFiles("*.sln", SearchOption.AllDirectories);
 
-            var projectXmls = projectFiles
-                .Select(file => (file, text: File.ReadAllText(file.FullName)))
-                .Select(x => (x.file, xml: XElement.Parse(x.text)))
-                .ToList();
-
-            return projectXmls
-                .Select(project =>
+            return solutionFiles
+                .Select(solutionFile =>
                 {
-                    var projectName = project.file.Name.Split(new[] { ".csproj" }, StringSplitOptions.None)[0];
+                    var solutionName = solutionFile.Name.Split(new[] { ".sln" }, StringSplitOptions.None)[0];
 
-                    var referenceElements = project.xml.XPathSelectElements("//*[local-name() = 'Reference']").ToList();
-                    var includes = referenceElements
-                        .Select(element =>
-                            element.Attributes().Single(attribute =>
-                                attribute.Name.LocalName == "Include"
-                            )
-                        )
+                    var projectFiles = solutionFile.Directory.GetFiles("*.csproj", SearchOption.AllDirectories);
+
+                    var projectXmls = projectFiles
+                        .Select(file => (file, text: File.ReadAllText(file.FullName)))
+                        .Select(x => (x.file, xml: XElement.Parse(x.text)))
                         .ToList();
 
-                    var dependencies = includes
-                        .Select(include =>
+                    var projects = projectXmls
+                        .Select(project =>
                         {
-                            var split = include.Value.Split(',');
+                            var projectName = project.file.Name.Split(new[] { ".csproj" }, StringSplitOptions.None)[0];
 
-                            var dependencyName = split[0];
+                            var referenceElements = project.xml.XPathSelectElements("//*[local-name() = 'Reference']").ToList();
+                            var includes = referenceElements
+                                .Select(element =>
+                                    element.Attributes().Single(attribute =>
+                                        attribute.Name.LocalName == "Include"
+                                    )
+                                )
+                                .ToList();
 
-                            var versionString = split.SingleOrDefault(s => s.Contains("Version"));
-                            var version = versionString?.Split('=').First();
-                            return new ProjectId(dependencyName, version: version);
+                            var dependencies = includes
+                                .Select(include =>
+                                {
+                                    var split = include.Value.Split(',');
+
+                                    var dependencyName = split[0];
+
+                                    var versionString = split.SingleOrDefault(s => s.Contains("Version"));
+                                    var version = versionString?.Split('=').Last();
+                                    return new ProjectId(dependencyName, version: version);
+                                })
+                                .ToList();
+
+                            return new Project(new ProjectId(projectName, solution: solutionName), dependencies);
                         })
                         .ToList();
 
-                    return new Project(new ProjectId(projectName), dependencies);
+                    return new Solution(solutionName, projects);
                 })
                 .ToList();
         }
 
-        private static void OutputProjects(string directory, IReadOnlyCollection<Project> projects)
+        private static void OutputProjects(string directory, IReadOnlyCollection<Solution> solutions)
         {
             var filePath = $"{directory}/output.dgml";
-            var output = Dgml(projects);
+            var output = Dgml(solutions);
             File.WriteAllText(filePath, output);
         }
 
-        private static string Dgml(IReadOnlyCollection<Project> projects) =>
+        private static string Dgml(IReadOnlyCollection<Solution> solutions) =>
             $@"<?xml version=""1.0"" encoding=""utf-8""?>
 <DirectedGraph Layout=""Sugiyama"" ZoomLevel=""-1"" xmlns=""http://schemas.microsoft.com/vs/2009/dgml"">
-    {Nodes(projects)}
-    {Links(projects)}
+    {Nodes(solutions)}
+    {Links(solutions)}
 </DirectedGraph>";
 
-        private static string Nodes(IReadOnlyCollection<Project> projects) =>
+        private static string Nodes(IReadOnlyCollection<Solution> solutions) =>
             $@"<Nodes>
-                {projects
-                    .Select(project => $@"<Node Id=""{project.Id}"" Label=""{project.Id}"" />")
-                    .Aggregate("", (a, b) => a + b)
-                }
+                {string.Join("", SolutionNodes(solutions))}
+                {string.Join("", ProjectNodes(solutions))}
             </Nodes>";
 
-        private static string Links(IReadOnlyCollection<Project> projects) =>
+        private static IEnumerable<string> SolutionNodes(IReadOnlyCollection<Solution> solutions) =>
+            from solution in solutions
+            select $@"<Node Id=""{solution.Name}"" Label=""{solution.Name}"" Group=""Expanded"" />";
+
+        private static IEnumerable<string> ProjectNodes(IReadOnlyCollection<Solution> solutions) =>
+            from solution in solutions
+            from project in solution.Projects
+            select $@"<Node Id=""{project.Id}"" Label=""{project.Id}"" />";
+
+        private static string Links(IReadOnlyCollection<Solution> solutions) =>
             $@"<Links>
-                {projects
-                    .SelectMany(
-                        project => project.Dependencies,
-                        (project, dependency) => (source: project.Id, target: dependency)
-                    )
-                    .Select(x => $@"<Link Source=""{x.source}"" Target=""{x.target}"" />")
-                    .Aggregate("", (a, b) => a + b)
-                }
+                {string.Join("", SolutionToProjectLinks(solutions))}
+                {string.Join("", ProjectToProjectLinks(solutions))}
             </Links>";
+
+        private static IEnumerable<string> SolutionToProjectLinks(IReadOnlyCollection<Solution> solutions) =>
+            from solution in solutions
+            from project in solution.Projects
+            select $@"<Link Source=""{solution.Name}"" Target=""{project.Id}"" Category=""Contains"" />";
+
+        private static IEnumerable<string> ProjectToProjectLinks(IReadOnlyCollection<Solution> solutions) =>
+            from solution in solutions
+            from project in solution.Projects
+            from dependency in project.Dependencies
+            select $@"<Link Source=""{project.Id}"" Target=""{dependency}"" />";
 
         private static void ShowHelp()
         {
