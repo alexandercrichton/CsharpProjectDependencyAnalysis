@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<DirectedGraph Layout="Sugiyama" ZoomLevel="-1" xmlns="http://schemas.microsoft.com/vs/2009/dgml">
-    <Nodes>
-                <Node Id="DependencyAnalysis" Label="DependencyAnalysis" />
-            </Nodes>
-    <Links>
-                <Link Source="DependencyAnalysis" Target="System" /><Link Source="DependencyAnalysis" Target="System.Core" /><Link Source="DependencyAnalysis" Target="System.ValueTuple[4.0.2.0]" /><Link Source="DependencyAnalysis" Target="System.Xml.Linq" /><Link Source="DependencyAnalysis" Target="System.Data.DataSetExtensions" /><Link Source="DependencyAnalysis" Target="Microsoft.CSharp" /><Link Source="DependencyAnalysis" Target="System.Data" /><Link Source="DependencyAnalysis" Target="System.Net.Http" /><Link Source="DependencyAnalysis" Target="System.Xml" />
-            </Links>
-</DirectedGraph>
