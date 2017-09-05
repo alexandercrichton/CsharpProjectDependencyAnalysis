@@ -4,12 +4,12 @@
     {
         public Dependency(string name, string version)
         {
-            ProjectId = new ProjectId(name, version: version);
+            Id = new ProjectId(name, version: version);
             Name = name;
             Version = version;
         }
 
-        public ProjectId ProjectId { get; }
+        public ProjectId Id { get; }
 
         public string Name { get; }
 
