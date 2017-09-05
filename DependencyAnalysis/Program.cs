@@ -17,13 +17,6 @@ namespace DependencyAnalysis
             {
                 var solutions = FindSolutionsInDirectory(directory);
 
-                var test = (from solution in solutions
-                 from project in solution.Projects
-                 from dependency in project.Dependencies
-                 where dependency.Name.Contains("System.Net.Http") && dependency.Version != null
-                 select new { Solution = solution.Name, Project = project.Name, Dependency = dependency.Id })
-                 .ToList();
-
                 OutputProjects(directory, solutions);
             }
             else
@@ -111,7 +104,7 @@ namespace DependencyAnalysis
                 {Nodes(solutions)}
                 {Links(solutions)}
                <Categories>  
-                  <Category Id=""{DependencyVersionGroupCategoryId}"" Stroke=""Orange"" Background=""Green"" />  
+                  <Category Id=""{DependencyVersionGroupCategoryId}"" Stroke=""Orange"" Background=""Orange"" />  
                </Categories>  
             </DirectedGraph>";
 
