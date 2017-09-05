@@ -46,6 +46,7 @@ namespace DependencyAnalysis
 
                     var projectXmls = projectFiles
                         .Select(file => (file, text: File.ReadAllText(file.FullName)))
+                        .Where(x => !string.IsNullOrWhiteSpace(x.text))
                         .Select(x => (x.file, xml: XElement.Parse(x.text)))
                         .ToList();
 
@@ -97,6 +98,7 @@ namespace DependencyAnalysis
         }
 
         private const string DependencyVersionGroupCategoryId = "DependencyVersionGroup";
+        private const string SolutionCategoryId = "Solution";
 
         private static string Dgml(IReadOnlyCollection<Solution> solutions) =>
             $@"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -104,7 +106,8 @@ namespace DependencyAnalysis
                 {Nodes(solutions)}
                 {Links(solutions)}
                <Categories>  
-                  <Category Id=""{DependencyVersionGroupCategoryId}"" Stroke=""Orange"" Background=""Orange"" />  
+                  <Category Id=""{DependencyVersionGroupCategoryId}"" Background=""Orange"" />  
+                  <Category Id=""{SolutionCategoryId}"" Background=""#2c89cc"" />  
                </Categories>  
             </DirectedGraph>";
 
@@ -118,7 +121,7 @@ namespace DependencyAnalysis
 
         private static IEnumerable<string> SolutionNodes(IReadOnlyCollection<Solution> solutions) =>
             from solution in solutions
-            select $@"<Node Id=""{solution.Name}"" Label=""{solution.Name}"" Group=""Expanded"" />";
+            select $@"<Node Id=""{solution.Name}"" Label=""{solution.Name}"" Group=""Expanded"" Category=""{SolutionCategoryId}"" />";
 
         private static IEnumerable<string> ProjectNodes(IReadOnlyCollection<Solution> solutions) =>
             from solution in solutions
