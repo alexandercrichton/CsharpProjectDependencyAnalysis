@@ -13,5 +13,8 @@ namespace DependencyAnalysis
         public string Name { get; }
 
         public IReadOnlyCollection<Project> Projects { get; }
+
+        public override string ToString() =>
+            Name;
     }
 }

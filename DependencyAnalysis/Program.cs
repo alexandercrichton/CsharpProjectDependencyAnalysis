@@ -15,7 +15,7 @@ namespace DependencyAnalysis
             var (valid, directory) = DirectoryFromArguments(args);
             if (valid)
             {
-                var solutions = FindSolutionsInDirectory(directory);
+                var solutions = SolutionFinder.FindSolutionsInDirectory(directory);
 
                 OutputProjects(directory, solutions);
             }
@@ -33,63 +33,6 @@ namespace DependencyAnalysis
                 ? (true, args.First())
                 : (false, null);
 
-        private static IReadOnlyCollection<Solution> FindSolutionsInDirectory(string directory)
-        {
-            var solutionFiles = new DirectoryInfo(directory).GetFiles("*.sln", SearchOption.AllDirectories);
-
-            return solutionFiles
-                .Select(solutionFile =>
-                {
-                    var solutionName = solutionFile.Name.Split(new[] { ".sln" }, StringSplitOptions.None)[0];
-
-                    var projectFiles = solutionFile.Directory.GetFiles("*.csproj", SearchOption.AllDirectories);
-
-                    var projectXmls = projectFiles
-                        .Select(file => (file, text: File.ReadAllText(file.FullName)))
-                        .Where(x => !string.IsNullOrWhiteSpace(x.text))
-                        .Select(x => (x.file, xml: XElement.Parse(x.text)))
-                        .ToList();
-
-                    var projects = projectXmls
-                        .Select(project =>
-                        {
-                            var projectName = project.file.Name.Split(new[] { ".csproj" }, StringSplitOptions.None)[0];
-
-                            var referenceElements = project.xml.XPathSelectElements("//*[local-name() = 'Reference']").ToList();
-                            var includes = referenceElements
-                                .Select(element =>
-                                    element.Attributes().Single(attribute =>
-                                        attribute.Name.LocalName == "Include"
-                                    )
-                                )
-                                .ToList();
-
-                            var dependencies = includes
-                                .Select(include =>
-                                {
-                                    var split = include.Value.Split(',');
-
-                                    var dependencyName = split[0];
-
-                                    var versionString = split.SingleOrDefault(s => s.Contains("Version"));
-                                    var version = versionString?.Split('=').Last();
-                                    return new Dependency(dependencyName, version);
-                                })
-                                .ToList();
-
-                            return new Project(
-                                new ProjectId(projectName, solution: solutionName), 
-                                projectName,
-                                dependencies
-                            );
-                        })
-                        .ToList();
-
-                    return new Solution(solutionName, projects);
-                })
-                .ToList();
-        }
-
         private static void OutputProjects(string directory, IReadOnlyCollection<Solution> solutions)
         {
             var filePath = $"{directory}/output.dgml";
@@ -97,7 +40,7 @@ namespace DependencyAnalysis
             File.WriteAllText(filePath, output);
         }
 
-        private const string DependencyVersionGroupCategoryId = "DependencyVersionGroup";
+        private const string ProjectVersionGroupCategoryId = "DependencyVersionGroup";
         private const string SolutionCategoryId = "Solution";
 
         private static string Dgml(IReadOnlyCollection<Solution> solutions) =>
@@ -106,7 +49,7 @@ namespace DependencyAnalysis
                 {Nodes(solutions)}
                 {Links(solutions)}
                <Categories>  
-                  <Category Id=""{DependencyVersionGroupCategoryId}"" Background=""Orange"" />  
+                  <Category Id=""{ProjectVersionGroupCategoryId}"" Background=""Orange"" />  
                   <Category Id=""{SolutionCategoryId}"" Background=""#2c89cc"" />  
                </Categories>  
             </DirectedGraph>";
@@ -115,75 +58,84 @@ namespace DependencyAnalysis
             $@"<Nodes>
                 {string.Join("", SolutionNodes(solutions))}
                 {string.Join("", ProjectNodes(solutions))}
-                {string.Join("", SingleVersionDependencyNodes(solutions))}
-                {string.Join("", GroupedVersionDependencyNodes(solutions))}
             </Nodes>";
 
         private static IEnumerable<string> SolutionNodes(IReadOnlyCollection<Solution> solutions) =>
             from solution in solutions
-            select $@"<Node Id=""{solution.Name}"" Label=""{solution.Name}"" Group=""Expanded"" Category=""{SolutionCategoryId}"" />";
+            select $@"<Node Id=""{SolutionId(solution.Name)}"" Label=""{solution.Name}"" Group=""Expanded"" Category=""{SolutionCategoryId}"" />";
+
+        private static string SolutionId(string name) =>
+            $"Sln-{name}";
 
         private static IEnumerable<string> ProjectNodes(IReadOnlyCollection<Solution> solutions) =>
-            from solution in solutions
-            from project in solution.Projects
-            group project by project.Name into grouping
-            where grouping.Count() == 1
-            select $@"<Node Id=""{grouping.Single().Id}"" Label=""{grouping.Single().Id}"" />";
-
-        private static IEnumerable<string> SingleVersionDependencyNodes(IReadOnlyCollection<Solution> solutions) =>
-            from solution in solutions
-            from project in solution.Projects
-            from dependency in project.Dependencies
-            group dependency by dependency.Name into grouping
-            where grouping.Select(dependency => dependency.Version).Distinct().Count() == 1
-            select $@"<Node Id=""{grouping.First().Id}"" Label=""{grouping.First().Id}"" />";
-
-        private static IEnumerable<string> GroupedVersionDependencyNodes(IReadOnlyCollection<Solution> solutions) =>
-            from solution in solutions
-            from project in solution.Projects
-            from dependency in project.Dependencies
-            group dependency by dependency.Name into grouping
-            where grouping.Select(dependency => dependency.Version).Distinct().Count() > 1
-            select string.Join(
-                "",
-                grouping
-                    .Select(dependency => $@"<Node Id=""{dependency.Id}"" Label=""{dependency.Id}"" />")
-                    .Concat(new[] 
-                    {
-                        $@"<Node Id=""{grouping.Key}"" Label=""{grouping.Key}"" Group=""Expanded"" Category=""{DependencyVersionGroupCategoryId}"" />"
-                    })
-            );
+            ProjectVersionGroups(solutions).SelectMany(projectGroup =>
+            {
+                if (projectGroup.Versions.Count > 1)
+                {
+                    return new[] { $@"<Node Id=""{projectGroup.ProjectName}"" Group=""Expanded"" Category=""{ProjectVersionGroupCategoryId}"" />" }
+                        .Concat(projectGroup.Versions.Select(version =>
+                            $@"<Node Id=""{ProjectId(projectGroup.ProjectName, version)}"" />"
+                        ));
+                }
+                else
+                {
+                    var singleVersion = projectGroup.Versions.SingleOrDefault();
+                    return new[] { $@"<Node Id=""{ProjectId(projectGroup.ProjectName, singleVersion)}"" />" };
+                }
+            });
 
         private static string Links(IReadOnlyCollection<Solution> solutions) =>
             $@"<Links>
                 {string.Join("", SolutionToProjectLinks(solutions))}
+                {string.Join("", ProjectToVersionLinks(solutions))}
                 {string.Join("", ProjectToDependencyLinks(solutions))}
-                {string.Join("", DependencyGroupToDependencyLinks(solutions))}
             </Links>";
 
         private static IEnumerable<string> SolutionToProjectLinks(IReadOnlyCollection<Solution> solutions) =>
             from solution in solutions
             from project in solution.Projects
-            select $@"<Link Source=""{solution.Name}"" Target=""{project.Id}"" Category=""Contains"" />";
+            select $@"<Link Source=""{SolutionId(solution.Name)}"" Target=""{ProjectId(project.Name)}"" Category=""Contains"" />";
+
+        private static IEnumerable<string> ProjectToVersionLinks(IReadOnlyCollection<Solution> solutions) =>
+            from projectGroup in ProjectVersionGroups(solutions)
+            where projectGroup.Versions.Count > 1
+            from version in projectGroup.Versions
+            let sourceId = ProjectId(projectGroup.ProjectName)
+            let targetId = ProjectId(projectGroup.ProjectName, version)
+            select $@"<Link Source=""{sourceId}"" Target=""{targetId}"" Category=""Contains"" />";
 
         private static IEnumerable<string> ProjectToDependencyLinks(IReadOnlyCollection<Solution> solutions) =>
             from solution in solutions
             from project in solution.Projects
             from dependency in project.Dependencies
-            select $@"<Link Source=""{project.Id}"" Target=""{dependency.Id}"" />";
+            select $@"<Link Source=""{ProjectId(project.Name)}"" Target=""{ProjectId(dependency.Name, dependency.Version)}"" />";
+        
+        private static IEnumerable<ProjectVersionGroup> ProjectVersionGroups(IReadOnlyCollection<Solution> solutions)
+        {
+            var projects = solutions.SelectMany(solution => solution.Projects).ToList();
+            var dependencies = projects.SelectMany(project => project.Dependencies).ToList();
 
-        private static IEnumerable<string> DependencyGroupToDependencyLinks(IReadOnlyCollection<Solution> solutions) =>
-            from solution in solutions
-            from project in solution.Projects
-            from dependency in project.Dependencies
-            group dependency by dependency.Name into grouping
-            where grouping.Select(dependency => dependency.Version).Distinct().Count() > 1
-            select string.Join(
-                "",
-                grouping.Select(dependency => 
-                    $@"<Link Source=""{grouping.Key}"" Target=""{dependency.Id}"" Category=""Contains"" />"
+            var projectVersions = projects
+                .Select(project => new { project.Name, Version = (string)null })
+                .Concat(dependencies.Select(dependency => new { dependency.Name, dependency.Version }))
+                .Distinct()
+                .ToList();
+
+            var groups = projectVersions.GroupBy(p => p.Name);
+
+            return groups.Select(group =>
+                new ProjectVersionGroup(
+                    group.Key, 
+                    group
+                        .Select(p => p.Version)
+                        .Where(version => version != null)
+                        .ToList()
                 )
             );
+        }
+
+        private static string ProjectId(string name, string version = null) =>
+            $"{name}{(version != null ? $"[{version}]" : "")}";
 
         private static void ShowHelp()
         {

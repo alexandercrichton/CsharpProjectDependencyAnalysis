@@ -2,17 +2,23 @@
 {
     internal class Dependency
     {
-        public Dependency(string name, string version)
+        private Dependency(string name, string version = null)
         {
-            Id = new ProjectId(name, version: version);
             Name = name;
             Version = version;
         }
 
-        public ProjectId Id { get; }
-
         public string Name { get; }
 
         public string Version { get; }
+
+        public static Dependency ProjectDependency(string name) =>
+            new Dependency(name, null);
+
+        public static Dependency NugetDependency(string name, string version) =>
+            new Dependency(name, version);
+
+        public override string ToString() =>
+            $"{{ {nameof(Name)}: {Name}, {nameof(Version)}: {(Version is null ? "null" : Version)} }}";
     }
 }
