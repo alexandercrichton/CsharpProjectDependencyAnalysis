@@ -40,8 +40,8 @@ namespace DependencyAnalysis
             File.WriteAllText(filePath, output);
         }
 
-        private const string ProjectVersionGroupCategoryId = "DependencyVersionGroup";
-        private const string SolutionCategoryId = "Solution";
+        private const string ProjectMultipleVersionsGroupCategoryId = nameof(ProjectMultipleVersionsGroupCategoryId);
+        private const string SolutionCategoryId = nameof(SolutionCategoryId);
 
         private static string Dgml(IReadOnlyCollection<Solution> solutions) =>
             $@"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -49,7 +49,7 @@ namespace DependencyAnalysis
                 {Nodes(solutions)}
                 {Links(solutions)}
                <Categories>  
-                  <Category Id=""{ProjectVersionGroupCategoryId}"" Background=""Orange"" />  
+                  <Category Id=""{ProjectMultipleVersionsGroupCategoryId}"" Background=""Orange"" />  
                   <Category Id=""{SolutionCategoryId}"" Background=""#2c89cc"" />  
                </Categories>  
             </DirectedGraph>";
@@ -70,17 +70,19 @@ namespace DependencyAnalysis
         private static IEnumerable<string> ProjectNodes(IReadOnlyCollection<Solution> solutions) =>
             ProjectVersionGroups(solutions).SelectMany(projectGroup =>
             {
-                if (projectGroup.Versions.Count > 1)
+                if (projectGroup.Versions.Any())
                 {
-                    return new[] { $@"<Node Id=""{projectGroup.ProjectName}"" Group=""Expanded"" Category=""{ProjectVersionGroupCategoryId}"" />" }
+                    var category = projectGroup.Versions.Count > 1
+                        ? ProjectMultipleVersionsGroupCategoryId
+                        : "";
+                    return new[] { $@"<Node Id=""{projectGroup.ProjectName}"" Group=""Expanded"" Category=""{category}"" />" }
                         .Concat(projectGroup.Versions.Select(version =>
                             $@"<Node Id=""{ProjectId(projectGroup.ProjectName, version)}"" />"
                         ));
                 }
                 else
                 {
-                    var singleVersion = projectGroup.Versions.SingleOrDefault();
-                    return new[] { $@"<Node Id=""{ProjectId(projectGroup.ProjectName, singleVersion)}"" />" };
+                    return new[] { $@"<Node Id=""{ProjectId(projectGroup.ProjectName)}"" />" };
                 }
             });
 
@@ -98,7 +100,7 @@ namespace DependencyAnalysis
 
         private static IEnumerable<string> ProjectToVersionLinks(IReadOnlyCollection<Solution> solutions) =>
             from projectGroup in ProjectVersionGroups(solutions)
-            where projectGroup.Versions.Count > 1
+            where projectGroup.Versions.Any()
             from version in projectGroup.Versions
             let sourceId = ProjectId(projectGroup.ProjectName)
             let targetId = ProjectId(projectGroup.ProjectName, version)
