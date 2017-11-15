@@ -6,8 +6,8 @@ type Nuget = {
 }
 
 type Dependency =
-    | Project of string
-    | Nuget of Nuget
+    | ProjectDependency of string
+    | NugetDependency of Nuget
 
 type Project = {
     name: string
@@ -18,3 +18,11 @@ type Solution = {
     name: string
     projects: Project list
 }
+
+type Message =
+    | TooManyArguments
+    | MissingDirectoryArgument
+    | DirectoryDoesNotExist
+    | NoSolutionsFound
+    | NoProjectsFoundInSolution of string
+    | MultipleNugetFilesInProject of string
