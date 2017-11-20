@@ -58,6 +58,8 @@
     <Compile Include="Tools.fs" />
     <Compile Include="RopResult.fs" />
     <Compile Include="DomainTypes.fs" />
+    <Compile Include="Loading.fs" />
+    <Compile Include="Dgml.fs" />
     <Compile Include="App.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />

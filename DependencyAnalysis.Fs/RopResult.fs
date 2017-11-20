@@ -8,8 +8,8 @@ let onSuccess success = function
     | Success x -> success x
     | Failure messages -> Failure messages
 
-let convert convert result = 
-    onSuccess (fun x -> Success (convert x)) result
+let convert converter result = 
+    onSuccess (fun x -> Success (converter x)) result
 
 let mergeResults mergeValues a b  =
     match a, b with

@@ -64,9 +64,6 @@ namespace DependencyAnalysis
             from solution in solutions
             select $@"<Node Id=""{SolutionId(solution.Name)}"" Label=""{solution.Name}"" Group=""Expanded"" Category=""{SolutionCategoryId}"" />";
 
-        private static string SolutionId(string name) =>
-            $"Sln-{name}";
-
         private static IEnumerable<string> ProjectNodes(IReadOnlyCollection<Solution> solutions) =>
             ProjectVersionGroups(solutions).SelectMany(projectGroup =>
             {
@@ -135,6 +132,9 @@ namespace DependencyAnalysis
                 )
             );
         }
+
+        private static string SolutionId(string name) =>
+            $"Sln-{name}";
 
         private static string ProjectId(string name, string version = null) =>
             $"{name}{(version != null ? $"[{version}]" : "")}";
