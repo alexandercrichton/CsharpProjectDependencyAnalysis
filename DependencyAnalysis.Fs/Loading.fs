@@ -7,13 +7,24 @@ open System.Xml.XPath
 open RopResult
 open DomainTypes
 
+let tryParseXDocument xml =
+    try 
+        xml |> XDocument.Parse |> Some
+    with    
+    | _ -> None
+
 let private loadProjectDependencies (projectFile: FileInfo) =
-    let projectXml = projectFile.FullName |> File.ReadAllText |> XDocument.Parse
-    projectXml
-        .XPathSelectElements("//*[local-name() = 'ProjectReference']/*[local-name() = 'Name']")
+    projectFile.FullName 
+    |> File.ReadAllText 
+    |> tryParseXDocument
+    |> Option.bind (fun xml ->
+        xml.XPathSelectElements("//*[local-name() = 'ProjectReference']/*[local-name() = 'Name']")
         |> Seq.map (fun element -> ProjectDependency element.Value)
         |> List.ofSeq
         |> Success
+        |> Some
+    )
+    |> Option.defaultValue (Success [])
 
 let private loadNugetDependencies projectName (projectFile: FileInfo) =
     let nugetFiles = 
@@ -23,9 +34,11 @@ let private loadNugetDependencies projectName (projectFile: FileInfo) =
     match nugetFiles with
     | [] -> Success []
     | [file] -> 
-        let nugetsXml = file.FullName |> File.ReadAllText |> XDocument.Parse
-        nugetsXml
-            .XPathSelectElements("//package")
+        file.FullName 
+        |> File.ReadAllText 
+        |> tryParseXDocument
+        |> Option.bind (fun nugetsXml -> 
+            nugetsXml.XPathSelectElements("//package")
             |> Seq.map(fun element ->
                 let attributeValue attributeName = 
                     element.Attributes() 
@@ -37,6 +50,9 @@ let private loadNugetDependencies projectName (projectFile: FileInfo) =
             )
             |> List.ofSeq
             |> foldResultList
+            |> Some
+        )
+        |> Option.defaultValue (Success [])
     | _ -> Failure [MultipleNugetFilesInProject projectName]
     
 let private loadProjects solution (solutionFile: FileInfo) =

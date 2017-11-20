@@ -25,4 +25,6 @@ type Message =
     | DirectoryDoesNotExist
     | NoSolutionsFound
     | NoProjectsFoundInSolution of string
+    | InvalidProjectXml of string
     | MultipleNugetFilesInProject of string
+    | InvalidNugetsXml of string
