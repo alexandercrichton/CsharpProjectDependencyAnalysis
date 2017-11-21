@@ -56,7 +56,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Tools.fs" />
-    <Compile Include="RopResult.fs" />
+    <Compile Include="Rop.fs" />
     <Compile Include="DomainTypes.fs" />
     <Compile Include="Loading.fs" />
     <Compile Include="Dgml.fs" />

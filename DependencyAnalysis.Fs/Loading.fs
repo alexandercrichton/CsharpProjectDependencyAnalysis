@@ -4,7 +4,7 @@ open System.IO
 open System.Xml.Linq
 open System.Xml.XPath
 
-open RopResult
+open Rop
 open DomainTypes
 
 let tryParseXDocument xml =
@@ -19,12 +19,15 @@ let private loadProjectDependencies (projectFile: FileInfo) =
     |> tryParseXDocument
     |> Option.bind (fun xml ->
         xml.XPathSelectElements("//*[local-name() = 'ProjectReference']/*[local-name() = 'Name']")
-        |> Seq.map (fun element -> ProjectDependency element.Value)
         |> List.ofSeq
-        |> Success
+        |> List.map (fun element -> ProjectDependency element.Value)
+        |> Ok
         |> Some
     )
-    |> Option.defaultValue (Success [])
+    |> Option.defaultValue Rop.id
+
+let foldListOfResults<'a, 'b> : (Result<'a, 'b> list -> Result<'a list, 'b>) =
+    List.fold (fun a b -> Rop.bind2 (fun a b -> a::b) b a) Rop.id
 
 let private loadNugetDependencies projectName (projectFile: FileInfo) =
     let nugetFiles = 
@@ -32,58 +35,58 @@ let private loadNugetDependencies projectName (projectFile: FileInfo) =
             .GetFiles("packages.config", SearchOption.TopDirectoryOnly)
             |> List.ofArray
     match nugetFiles with
-    | [] -> Success []
+    | [] -> Rop.id
     | [file] -> 
         file.FullName 
         |> File.ReadAllText 
         |> tryParseXDocument
         |> Option.bind (fun nugetsXml -> 
             nugetsXml.XPathSelectElements("//package")
-            |> Seq.map(fun element ->
+            |> List.ofSeq
+            |> List.map(fun element ->
                 let attributeValue attributeName = 
                     element.Attributes() 
                     |> Seq.find (fun a -> a.Name.LocalName = attributeName) 
                     |> (fun a -> a.Value)
                 let nugetName = attributeValue "id"
                 let nugetVersion = attributeValue "version"
-                Success (NugetDependency { name = nugetName; version = nugetVersion })
+                NugetDependency { name = nugetName; version = nugetVersion }
             )
-            |> List.ofSeq
-            |> foldResultList
+            |> Ok
             |> Some
         )
-        |> Option.defaultValue (Success [])
-    | _ -> Failure [MultipleNugetFilesInProject projectName]
+        |> Option.defaultValue Rop.id
+    | _ -> Fail [MultipleNugetFilesInProject projectName]
     
 let private loadProjects solution (solutionFile: FileInfo) =
     let projectFiles = solutionFile.Directory.GetFiles("*.csproj", SearchOption.AllDirectories)
     if projectFiles |> Array.isEmpty then
-        Failure [NoProjectsFoundInSolution solution]
+        Fail [NoProjectsFoundInSolution solution]
     else
         projectFiles
         |> List.ofArray
         |> List.map (fun (file: FileInfo) ->
             let projectName = file.Name |> Tools.trimFromEnd ".csproj"
-            let dependencies = 
-                loadProjectDependencies file
-                |> mergeListResults (loadNugetDependencies projectName file)
-            dependencies 
-            |> RopResult.convert (fun dependencies -> 
+            let projectDependencies = loadProjectDependencies file
+            let nugetDependencies = loadNugetDependencies projectName file
+
+            Rop.bind2 (fun a b -> a @ b) projectDependencies nugetDependencies
+            |> Rop.map (fun dependencies -> 
                 { name = projectName; dependencies = dependencies }
             )
         )
-        |> foldResultList
+        |> foldListOfResults
         
 let loadSolutions (directory: DirectoryInfo) =
     let solutionFiles = directory.GetFiles("*.sln", SearchOption.AllDirectories)
     if solutionFiles |> Array.isEmpty then
-        Failure [NoSolutionsFound]
+        Fail [NoSolutionsFound]
     else
         solutionFiles 
         |> List.ofArray 
         |> List.map (fun (file: FileInfo) ->
             let solutionName = file.Name |> Tools.trimFromEnd ".sln"
             loadProjects solutionName file
-            |> RopResult.convert (fun projects -> { name = solutionName; projects = projects })
+            |> Rop.map (fun projects -> { name = solutionName; projects = projects })
         )
-        |> foldResultList
+        |> foldListOfResults

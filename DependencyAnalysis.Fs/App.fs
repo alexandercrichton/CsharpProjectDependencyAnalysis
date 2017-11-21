@@ -1,20 +1,20 @@
 ﻿
 module App
 
-open RopResult
+open Rop
 open DomainTypes
 open System.IO
 
 let private directoryFromArguments = function
     | [directory] -> 
         if Directory.Exists directory then 
-            Success (new DirectoryInfo(directory))
+            Ok (new DirectoryInfo(directory))
         else
-            Failure [DirectoryDoesNotExist]
+            Fail [DirectoryDoesNotExist]
     | [] -> 
-        Failure [MissingDirectoryArgument]
+        Fail [MissingDirectoryArgument]
     | _ -> 
-        Failure [TooManyArguments]
+        Fail [TooManyArguments]
 
 type FileName = FileName of string
     
@@ -26,9 +26,9 @@ let private outputDgml (directory: DirectoryInfo) dgml =
 let run args =
     args 
     |> directoryFromArguments
-    |> RopResult.onSuccess (fun directory -> 
+    |> Rop.bind (fun directory -> 
         directory
         |> Loading.loadSolutions
-        |> RopResult.onSuccess (Dgml.build >> Success)
-        |> RopResult.onSuccess (outputDgml directory >> Success)
+        |> Rop.bind (Dgml.build >> Ok)
+        |> Rop.bind (outputDgml directory >> Ok)
     )

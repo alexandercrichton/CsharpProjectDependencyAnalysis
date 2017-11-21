@@ -1,4 +1,4 @@
-﻿open RopResult
+﻿open Rop
 open DomainTypes
 
 [<EntryPoint>]
@@ -10,9 +10,9 @@ let main argv =
         |> App.run
 
     match result with
-    | Success fileName ->
+    | Ok fileName ->
         printfn "Successfully created %A" fileName
-    | Failure messages ->
+    | Fail messages ->
         printfn "Errors: "
         for message in messages do
             match message with 
